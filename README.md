@@ -1,49 +1,103 @@
-# TANOS
+# TANOS: Taproot Adaptor for Nostr-Orchestrated Swaps
 
-**Taproot Adaptor for Nostr-Orchestrated Swaps**
+TANOS is a library implementing atomic swaps between Bitcoin and Nostr, using Taproot and Schnorr adaptor signatures.
 
-TANOS is an experimental protocol that enables atomic swaps between Bitcoin and Nostr event signatures using Taproot and adaptor signatures. It explores the intersection of programmable Bitcoin transactions and decentralized identity/event systems.
+## Overview
 
-## 🧠 What is TANOS?
+TANOS allows atomic swaps between:
+- Bitcoin transactions using Taproot P2TR addresses
+- Nostr events with Schnorr signatures
 
-TANOS (Taproot Adaptor for Nostr-Orchestrated Swaps) creates a **trustless** way to exchange Bitcoin for signed Nostr events — such as attestations, credentials, encrypted messages, or access tokens — without relying on trusted third parties.
+The protocol uses adaptor signatures to ensure atomicity: the buyer only gets the signed Nostr event if they pay with Bitcoin, and the seller only gets the Bitcoin if they reveal the secret from the Nostr signature.
 
-It leverages:
+## Features
 
-- 🟠 **Bitcoin Taproot** — enabling advanced spending conditions
-- 🔐 **Adaptor Signatures** — allowing conditional signature revelation
-- 🌐 **Nostr Protocol** — a censorship-resistant event/message transport layer
+- BIP340-compliant Schnorr adaptor signatures
+- Taproot address creation and transaction handling
+- Nostr event creation and signing
+- Complete atomic swap protocol implementation
+- Pure Go implementation
 
-Together, these primitives enable a new class of atomic interactions between Bitcoin and decentralized identity/data.
+## Project Structure
 
-## ⚙️ How it works
+The project is organized into the following packages:
 
-1. **The buyer** (payer) wants to receive a Nostr-signed event and is willing to pay BTC for it.
-2. A Bitcoin Taproot output is created with a spending condition linked to an adaptor signature.
-3. **The seller** (signer) prepares a valid Nostr event and uses an adaptor signature to claim the BTC.
-4. When the seller claims the Bitcoin, the adaptor signature reveals the full Nostr signature **on-chain**.
-5. If the seller does not act before the timeout, the buyer can refund the BTC — and the Nostr signature is never revealed.
+- `pkg/adaptor` - Adaptor signature implementation using Schnorr
+- `pkg/bitcoin` - Bitcoin-related functionality (Taproot, transactions)
+- `pkg/crypto` - Common cryptographic utilities
+- `pkg/nostr` - Nostr-related functionality
+- `pkg/tanos` - High-level swap protocol implementation
+- `examples/swap` - Example implementation of a complete swap
 
-✅ This mechanism is fully **trustless**:
-- The buyer cannot lose BTC without receiving the valid signature.
-- The seller cannot reveal the signature without receiving the BTC.
-- No third party or escrow is required — it's all enforced by cryptography and Bitcoin script.
+## Getting Started
 
-## 🧪 Use Cases
+### Prerequisites
 
-- Buying Nostr-based credentials or access tokens with BTC
-- Decentralized pay-to-write or pay-to-attest systems
-- Atomic swaps for encrypted data or commitments
-- Bitcoin-backed messaging incentives
+- Go 1.18+
+- Bitcoin and Nostr dependencies
 
-## 🔬 Status
+### Installation
 
-This is a proof-of-concept developed for the [MIT Bitcoin Hackathon](https://mitbitcoin.dev/). It is not production-ready — but the ideas might be 😉
+```bash
+git clone https://github.com/GustavoStingelin/tanos.git
+cd tanos
+go mod download
+```
 
-## 🔗 Inspiration
+### Running the Example
 
-This project is inspired by [NIP 455: Atomic Signature Swaps](https://github.com/vstabile/nips/blob/atomic-signature-swaps/XX.md), which proposes a standard for performing atomic swaps of cryptographic signatures over Nostr.
+```bash
+go run examples/swap/main.go
+```
 
-## 📜 License
+## The Swap Protocol
 
-MIT
+1. **Setup**:
+   - Seller has a Nostr private key
+   - Buyer has Bitcoin
+
+2. **Commitment**:
+   - Seller creates and signs a Nostr event
+   - Seller extracts the nonce (R) from the signature
+   - Seller computes the commitment T = R + e*P
+
+3. **Locking**:
+   - Buyer creates a Bitcoin transaction locking funds to a P2TR address
+   - Buyer creates an adaptor signature using the commitment T
+   - Buyer sends the adaptor signature to the seller
+
+4. **Revealing**:
+   - Seller completes the adaptor signature using the secret from the Nostr signature
+   - Seller broadcasts the Bitcoin transaction with the completed signature
+
+5. **Verification**:
+   - Buyer extracts the secret from the completed signature
+   - Buyer verifies that the secret matches the one in the Nostr signature
+
+## Security Considerations
+
+### BIP340 Parity Rules
+
+TANOS carefully implements BIP340 parity rules for Schnorr signatures. According to the specification:
+
+- Schnorr signatures in BIP340 require the Y-coordinate of the nonce point (R) to be even
+- When the Y-coordinate is odd, the signature value 's' must be negated
+- This affects how secrets are extracted from completed signatures
+
+This implementation automatically handles these parity adjustments, ensuring that:
+1. Generated Bitcoin signatures are valid according to BIP340
+2. Secrets extracted from signatures are correctly recovered, even after parity adjustments
+
+### Tagged Hashes
+
+For enhanced security, the library uses BIP340-style tagged hashes for all signature challenges, ensuring signatures from different contexts cannot be reused.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- BIP340 (Schnorr Signatures)
+- BIP341 (Taproot)
+- Nostr Protocol
