@@ -37,7 +37,7 @@ The project is organized into the following packages:
 
 ### Prerequisites
 
-- Go 1.18+
+- Go 1.24.1 or later
 - Bitcoin and Nostr dependencies
 
 ### Installation
