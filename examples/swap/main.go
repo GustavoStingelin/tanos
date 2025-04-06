@@ -57,7 +57,16 @@ func main() {
 	// Use the testnet for development
 	params := &chaincfg.TestNet3Params
 
-	err = buyer.CreateLockingTransaction(100000, params) // 0.001 BTC in satoshis
+	// Use a dummy previous transaction ID and output index for the example
+	dummyPrevTxID := "0000000000000000000000000000000000000000000000000000000000000000"
+	dummyPrevOutputIndex := uint32(0)
+
+	err = buyer.CreateLockingTransaction(
+		100000, // 0.001 BTC in satoshis
+		dummyPrevTxID,
+		dummyPrevOutputIndex,
+		params,
+	)
 	if err != nil {
 		panic(fmt.Errorf("failed to create locking transaction: %v", err))
 	}
@@ -177,4 +186,79 @@ func main() {
 
 	fmt.Println("\nBitcoin Transaction Ready for Broadcast")
 	fmt.Println("Transaction hash:", buyer.LockingTx.TxHash().String())
+
+	// Step 11: Create a transaction that uses a Nostr signature lock directly
+	fmt.Println("\n--- Creating Transaction with Nostr Signature Lock ---")
+
+	// Create a new buyer for the Nostr-locked transaction
+	nostrLockBuyer, err := tanos.NewBuyer()
+	if err != nil {
+		panic(fmt.Errorf("failed to create nostr lock buyer: %v", err))
+	}
+
+	// Create a transaction that locks funds directly to a Nostr signature
+	err = nostrLockBuyer.CreateLockingTransactionWithNostrLock(
+		50000, // 0.0005 BTC in satoshis
+		dummyPrevTxID,
+		dummyPrevOutputIndex,
+		seller.PublicKey,  // Use the seller's public key for the lock
+		seller.Commitment, // Use the commitment from the Nostr signature
+		params,
+	)
+	if err != nil {
+		panic(fmt.Errorf("failed to create Nostr lock transaction: %v", err))
+	}
+
+	// Serialize the Nostr lock transaction for display
+	nostrLockTxHex, err := bitcoin.SerializeTx(nostrLockBuyer.LockingTx)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Nostr Lock Transaction (hex):", nostrLockTxHex)
+	fmt.Println("Transaction hash:", nostrLockBuyer.LockingTx.TxHash().String())
+	fmt.Println("Funds can only be spent with knowledge of the Nostr signature secret")
+
+	// Step 12: Demonstrate chaining transactions with CreateSpendingTransaction
+	fmt.Println("\n--- Demonstrating Transaction Chaining ---")
+
+	// Use the previous transaction ID as input for a new transaction
+	prevTxID := buyer.LockingTx.TxHash().String()
+	prevOutputIndex := uint32(0)     // First output
+	prevOutputValue := int64(100000) // Value from the previous transaction
+
+	// Get the previous output script
+	prevOutputScript := buyer.LockingTx.TxOut[0].PkScript
+
+	// Create a new buyer for the next swap
+	nextBuyer, err := tanos.NewBuyer()
+	if err != nil {
+		panic(fmt.Errorf("failed to create next buyer: %v", err))
+	}
+
+	fmt.Println("New Buyer Public Key:", crypto.HexEncode(nextBuyer.PublicKey.SerializeCompressed()))
+
+	// Chain transactions by spending the previous output
+	err = nextBuyer.CreateSpendingTransaction(
+		prevTxID,
+		prevOutputIndex,
+		prevOutputValue,
+		prevOutputScript,
+		1000,              // Fee in satoshis
+		seller.Commitment, // Reusing the same commitment for demonstration
+		params,
+	)
+	if err != nil {
+		panic(fmt.Errorf("failed to create spending transaction: %v", err))
+	}
+
+	// Serialize the spending transaction for display
+	spendTxHex, err := bitcoin.SerializeTx(nextBuyer.LockingTx)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Spending Transaction (hex):", spendTxHex)
+	fmt.Println("Spending Transaction hash:", nextBuyer.LockingTx.TxHash().String())
+	fmt.Println("Successfully chained transaction to spend previous output")
 }

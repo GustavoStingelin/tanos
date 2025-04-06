@@ -7,6 +7,7 @@ import (
 
 	secp "github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
 	nostrlib "github.com/nbd-wtf/go-nostr"
 
@@ -126,12 +127,72 @@ func (s *SwapSeller) CreateEvent(content string) error {
 
 // CreateLockingTransaction creates a Bitcoin transaction that locks funds
 // in a Pay-to-Taproot output that can be spent with an adaptor signature.
-func (b *SwapBuyer) CreateLockingTransaction(amount int64, network *chaincfg.Params) error {
+func (b *SwapBuyer) CreateLockingTransaction(
+	amount int64,
+	prevTxID string,
+	prevOutputIndex uint32,
+	network *chaincfg.Params,
+) error {
 	// Create the locking transaction
-	lockTx, lockScript, err := bitcoin.CreateLockingTransaction(b.PublicKey, amount, network)
+	lockTx, lockScript, err := bitcoin.CreateLockingTransaction(
+		b.PublicKey,
+		amount,
+		prevTxID,
+		prevOutputIndex,
+		network,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create locking transaction: %v", err)
 	}
+
+	b.LockingTx = lockTx
+
+	// Calculate the signature hash
+	sigHash, err := bitcoin.CalculateSighash(lockTx, 0, lockScript)
+	if err != nil {
+		return fmt.Errorf("failed to calculate signature hash: %v", err)
+	}
+
+	b.SigHash = sigHash
+
+	return nil
+}
+
+// CreateLockingTransactionWithNostrLock creates a Bitcoin transaction that locks funds
+// in a Pay-to-Taproot output that can only be spent with knowledge of a Nostr signature.
+// This is an enhanced version that uses the seller's Nostr public key and commitment
+// to create a script that enforces the atomic swap condition.
+func (b *SwapBuyer) CreateLockingTransactionWithNostrLock(
+	amount int64,
+	prevTxID string,
+	prevOutputIndex uint32,
+	nostrPubKey *secp.PublicKey,
+	commitment *secp.PublicKey,
+	network *chaincfg.Params,
+) error {
+	// Create a taproot address that locks to the Nostr signature
+	_, lockScript, err := bitcoin.CreateNostrSignatureLockScript(nostrPubKey, commitment, network)
+	if err != nil {
+		return fmt.Errorf("failed to create Nostr signature lock script: %v", err)
+	}
+
+	// Create a new transaction
+	lockTx := wire.NewMsgTx(2) // Version 2 for taproot support
+
+	// Parse previous transaction ID
+	prevHash, err := chainhash.NewHashFromStr(prevTxID)
+	if err != nil {
+		return fmt.Errorf("invalid previous transaction ID: %v", err)
+	}
+
+	// Add the input using the provided previous outpoint
+	prevOut := wire.NewOutPoint(prevHash, prevOutputIndex)
+	txIn := wire.NewTxIn(prevOut, nil, nil)
+	lockTx.AddTxIn(txIn)
+
+	// Add the output with the Nostr signature lock script
+	txOut := wire.NewTxOut(amount, lockScript)
+	lockTx.AddTxOut(txOut)
 
 	b.LockingTx = lockTx
 
@@ -317,4 +378,46 @@ func (b *SwapBuyer) DebugAdaptorSignature(completedSig *secp.ModNScalar, nostrSe
 	results["Direct calculation match"] = fmt.Sprintf("%v", directMatches)
 
 	return results
+}
+
+// CreateSpendingTransaction creates a Bitcoin transaction that spends a previous output
+// and locks the funds in a new Taproot output that can be spent with an adaptor signature.
+// This enables chaining multiple atomic swaps by spending outputs from previous swaps.
+func (b *SwapBuyer) CreateSpendingTransaction(
+	prevTxID string,
+	prevOutputIndex uint32,
+	prevOutputValue int64,
+	prevOutputScript []byte,
+	fee int64,
+	newCommitment *secp.PublicKey,
+	network *chaincfg.Params,
+) error {
+	// Create the spending transaction
+	spendTx, pkScript, err := bitcoin.CreateSpendingTransaction(
+		prevTxID,
+		prevOutputIndex,
+		prevOutputValue,
+		prevOutputScript,
+		fee,
+		b.PrivateKey,
+		newCommitment,
+		network,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create spending transaction: %v", err)
+	}
+
+	// Set the locking transaction
+	b.LockingTx = spendTx
+
+	// Calculate the signature hash for the new locking transaction
+	sigHash, err := bitcoin.CalculateSighash(spendTx, 0, pkScript)
+	if err != nil {
+		return fmt.Errorf("failed to calculate signature hash: %v", err)
+	}
+
+	// Set the signature hash for the locking transaction
+	b.SigHash = sigHash
+
+	return nil
 }
