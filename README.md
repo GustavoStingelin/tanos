@@ -1,6 +1,6 @@
 # TANOS: Taproot Adaptor for Nostr-Orchestrated Swaps
 
-TANOS is a library implementing atomic swaps between Bitcoin and Nostr, using Taproot and Schnorr adaptor signatures.
+TANOS is a library implementing atomic swaps between Bitcoin and Nostr, using Taproot and Schnorr adaptor signatures, developed for the [MIT Bitcoin Hackathon](https://mitbitcoin.dev/).
 
 ## Overview
 
@@ -9,6 +9,10 @@ TANOS allows atomic swaps between:
 - Nostr events with Schnorr signatures
 
 The protocol uses adaptor signatures to ensure atomicity: the buyer only gets the signed Nostr event if they pay with Bitcoin, and the seller only gets the Bitcoin if they reveal the secret from the Nostr signature.
+
+## Inspiration
+
+This project is inspired by [NIP 455: Atomic Signature Swaps](https://github.com/vstabile/nips/blob/atomic-signature-swaps/XX.md), which proposes a standard for performing atomic swaps of cryptographic signatures over Nostr.
 
 ## Features
 
@@ -101,3 +105,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - BIP340 (Schnorr Signatures)
 - BIP341 (Taproot)
 - Nostr Protocol
+- [MIT Bitcoin Hackathon](https://mitbitcoin.dev/)
+- [NIP 455: Atomic Signature Swaps](https://github.com/vstabile/nips/blob/atomic-signature-swaps/XX.md)
