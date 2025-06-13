@@ -8,6 +8,7 @@ import (
 	secp "github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	nostrlib "github.com/nbd-wtf/go-nostr"
 
@@ -148,7 +149,11 @@ func (b *SwapBuyer) CreateLockingTransaction(
 	b.LockingTx = lockTx
 
 	// Calculate the signature hash
-	sigHash, err := bitcoin.CalculateSighash(lockTx, 0, lockScript)
+	prevFetcher := txscript.NewCannedPrevOutputFetcher(lockScript, amount)
+	sigHashes := txscript.NewTxSigHashes(lockTx, prevFetcher)
+	sigHash, err := txscript.CalcTaprootSignatureHash(
+		sigHashes, txscript.SigHashDefault, lockTx, 0, prevFetcher,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to calculate signature hash: %v", err)
 	}
@@ -197,7 +202,11 @@ func (b *SwapBuyer) CreateLockingTransactionWithNostrLock(
 	b.LockingTx = lockTx
 
 	// Calculate the signature hash
-	sigHash, err := bitcoin.CalculateSighash(lockTx, 0, lockScript)
+	prevFetcher := txscript.NewCannedPrevOutputFetcher(lockScript, amount)
+	sigHashes := txscript.NewTxSigHashes(lockTx, prevFetcher)
+	sigHash, err := txscript.CalcTaprootSignatureHash(
+		sigHashes, txscript.SigHashDefault, lockTx, 0, prevFetcher,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to calculate signature hash: %v", err)
 	}
@@ -411,7 +420,12 @@ func (b *SwapBuyer) CreateSpendingTransaction(
 	b.LockingTx = spendTx
 
 	// Calculate the signature hash for the new locking transaction
-	sigHash, err := bitcoin.CalculateSighash(spendTx, 0, pkScript)
+	outputAmount := prevOutputValue - fee
+	prevFetcher := txscript.NewCannedPrevOutputFetcher(pkScript, outputAmount)
+	sigHashes := txscript.NewTxSigHashes(spendTx, prevFetcher)
+	sigHash, err := txscript.CalcTaprootSignatureHash(
+		sigHashes, txscript.SigHashDefault, spendTx, 0, prevFetcher,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to calculate signature hash: %v", err)
 	}
